@@ -1,11 +1,15 @@
-provider "aws" { region = "us-east-1" }
-
-resource "aws_ecr_repository" "app_repo" {
-  name = "devops-rtb-c15-app"
+provider "aws" {
+  region = "us-east-1"
 }
 
-resource "aws_ecs_cluster" "main" {
-  name = "rtb-cluster"
+# 1. Create the ECR Repository (where Docker images are stored)
+resource "aws_ecr_repository" "poc_repo" {
+  name = "rtb-c15-repo"
 }
 
-# (Add ECS Service and Task Definitions here focusing on EC2 launch type)
+# 2. Create the ECS Cluster
+resource "aws_ecs_cluster" "poc_cluster" {
+  name = "rtb-ecs-cluster"
+}
+
+# (Note: For a full EC2 setup, you'd add Auto Scaling Groups here)
