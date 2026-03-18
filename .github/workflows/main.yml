@@ -1,0 +1,52 @@
+name: DevOps RTB C15 CI/CD with GenAI
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Milestone 2: Linting & Testing
+      - name: Terraform Linter
+        uses: terraform-linters/setup-tflint@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Milestone 3: Multi-Cloud Deployment (IaC)
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init & Apply
+        run: |
+          cd terraform
+          terraform init
+          terraform apply -auto-approve
+
+      # Milestone 2/3: Docker Build & Push
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/devops-rtb-c15-app:$IMAGE_TAG ./app
+          docker push $ECR_REGISTRY/devops-rtb-c15-app:$IMAGE_TAG
+
+      # Milestone 5: GenAI Integration (Post-Deployment Summary)
+      - name: Generate AI Deployment Summary
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 scripts/genai_summary.py "${{ github.event.head_commit.message }}"
