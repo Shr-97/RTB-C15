@@ -1,52 +1,66 @@
-name: DevOps RTB C15 CI/CD with GenAI
+name: RTB-C15 DevOps POC
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      # Milestone 2: Linting & Testing
-      - name: Terraform Linter
-        uses: terraform-linters/setup-tflint@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+    # --- STEP 1: INFRASTRUCTURE (TERRAFORM) ---
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
 
-      # Milestone 3: Multi-Cloud Deployment (IaC)
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+    - name: Terraform Init & Apply
+      working-directory: ./terraform
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: us-east-1
+      run: |
+        terraform init
+        terraform apply -auto-approve
 
-      - name: Terraform Init & Apply
-        run: |
-          cd terraform
-          terraform init
-          terraform apply -auto-approve
+    # --- STEP 2: BUILD & PUSH DOCKER IMAGE ---
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
 
-      # Milestone 2/3: Docker Build & Push
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and Push Docker Image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/devops-rtb-c15-app:$IMAGE_TAG ./app
-          docker push $ECR_REGISTRY/devops-rtb-c15-app:$IMAGE_TAG
+    - name: Build, Tag, and Push Image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: rtb-c15-repo
+        IMAGE_TAG: latest
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./app
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # Milestone 5: GenAI Integration (Post-Deployment Summary)
-      - name: Generate AI Deployment Summary
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          python3 scripts/genai_summary.py "${{ github.event.head_commit.message }}"
+    # --- STEP 3: GENAI DEPLOYMENT SUMMARY (GEMINI) ---
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Google GenAI Library
+      run: pip install -U google-genai
+
+    - name: Generate AI Deployment Summary
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # Passing the last commit message to the script
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+      run: python scripts/genai_summary.py

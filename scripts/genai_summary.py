@@ -1,18 +1,19 @@
 import os
-import openai
-import sys
+from google import genai
 
-commit_msg = sys.argv[1]
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+def generate_summary():
+    # The client automatically uses the GEMINI_API_KEY env var
+    client = genai.Client()
+    
+    commit_msg = os.environ.get("COMMIT_MESSAGE", "No commit message found.")
+    prompt = f"Summarize this DevOps deployment for a manager based on this commit: {commit_msg}"
 
-response = client.chat.completions.create(
-  model="gpt-3.5-turbo",
-  messages=[
-    {"role": "system", "content": "You are a DevOps Assistant. Summarize this deployment for a Slack notification."},
-    {"role": "user", "content": f"New code deployed. Commit message: {commit_msg}"}
-  ]
-)
+    response = client.models.generate_content(
+        model="gemini-3-flash-preview", 
+        contents=prompt
+    )
 
-summary = response.choices[0].message.content
-print(f"GenAI Summary: {summary}")
-# Logic to send 'summary' to Slack Webhook would go here
+    print(f"\n--- DEPLOYMENT SUMMARY ---\n{response.text}\n--------------------------")
+
+if __name__ == "__main__":
+    generate_summary()
